@@ -47,7 +47,6 @@ st.subheader("📌 BÁO CÁO TIẾN ĐỘ TUẦN 4/12 | HỌC PHẦN IT4931 - L�
 st.info(
     """
     **Nhóm 7:** Dương Gia Huy (20236035) | Nguyễn Nhật Linh (20236040) | Nguyễn Chí Đức (20235042) | Nguyễn Khoa Bằng (20230016)  
-    **Cấu hình thực nghiệm:** Intel® Core™ Ultra 7 (24 Luồng) | 32 GB RAM (Spark sử dụng 10 GB) | PySpark 4.x
     """
 )
 
@@ -119,7 +118,7 @@ with tab1:
 # ==========================================
 with tab2:
     st.markdown("### ⚡ Kết quả Thực nghiệm Đo đạc Hiệu năng: CSV vs Parquet")
-    st.caption("Thực nghiệm trên môi trường máy cá nhân: 32 GB RAM - Intel Core Ultra 7")
+    st.caption("Thực nghiệm trên môi trường máy cá nhân")
 
     bench_data = load_benchmark_data()
     if bench_data is None:
