@@ -1,0 +1,68 @@
+# ==============================================================================
+# .gitignore for Big Data Project - Group 7 (IT4931 - HUST)
+# ==============================================================================
+
+# 1. Dữ liệu lớn (Tuyệt đối không push file > 100MB lên GitHub kẻo bị khóa repo)
+data/bronze/*
+!data/bronze/.gitkeep
+data/silver/*
+!data/silver/.gitkeep
+data/gold/*
+!data/gold/.gitkeep
+data/streaming_inputs/*
+!data/streaming_inputs/.gitkeep
+data/streaming_checkpoint/*
+!data/streaming_checkpoint/.gitkeep
+
+# Định dạng dữ liệu dung lượng lớn
+*.zip
+*.tar.gz
+*.csv
+*.parquet
+*.crc
+
+# Ngoại lệ: Giữ lại file kết quả benchmark JSON để hiển thị Dashboard
+!data/benchmark_results.json
+
+# 2. Apache Spark & Hadoop Temp/Logs
+metastore_db/
+derby.log
+spark-warehouse/
+*.log
+
+# 3. Python Cache & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.env
+.venv
+env/
+venv/
+ENV/
+
+# 4. IDE & Hệ điều hành
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+

@@ -1,0 +1,24 @@
+{
+  "storage": {
+    "csv_size_mb": 646.84,
+    "parquet_size_mb": 14.03,
+    "saved_percentage": 97.83
+  },
+  "query_count": {
+    "csv_time_sec": 7.43,
+    "parquet_time_sec": 1.046,
+    "speedup": 7.1,
+    "csv_rows": 25000095,
+    "parquet_rows": 1000000
+  },
+  "query_aggregation": {
+    "csv_time_sec": 4.405,
+    "parquet_time_sec": 0.933,
+    "speedup": 4.72
+  },
+  "query_filter": {
+    "csv_time_sec": 2.639,
+    "parquet_time_sec": 0.456,
+    "speedup": 5.79
+  }
+}
