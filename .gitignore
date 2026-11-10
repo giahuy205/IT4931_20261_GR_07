@@ -13,6 +13,9 @@ data/streaming_inputs/*
 !data/streaming_inputs/.gitkeep
 data/streaming_checkpoint/*
 !data/streaming_checkpoint/.gitkeep
+data/checkpoints/*
+models/*
+!models/.gitkeep
 
 # Định dạng dữ liệu dung lượng lớn
 *.zip
@@ -23,6 +26,7 @@ data/streaming_checkpoint/*
 
 # Ngoại lệ: Giữ lại file kết quả benchmark JSON để hiển thị Dashboard
 !data/benchmark_results.json
+!data/model_comparison_results.json
 
 # 2. Apache Spark & Hadoop Temp/Logs
 metastore_db/

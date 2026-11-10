@@ -39,6 +39,8 @@ def get_spark_session(app_name="MovieLens_Group7_BigData"):
         .config("spark.driver.memory", "10g")
         .config("spark.driver.maxResultSize", "2g")
         .config("spark.executor.memory", "10g")
+        .config("spark.driver.extraJavaOptions", "-Xss8m")
+        .config("spark.executor.extraJavaOptions", "-Xss8m")
         .config("spark.memory.fraction", "0.7")
         .config("spark.memory.storageFraction", "0.3")
         .config("spark.sql.shuffle.partitions", "24")
