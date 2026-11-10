@@ -1,10 +1,13 @@
 {
-  "timestamp": "2026-11-10 15:10:54",
+  "timestamp": "2026-11-10 23:47:11",
   "dataset_info": {
-    "total_silver_records": 1000000,
-    "experiment_sample_records": 1000000,
-    "train_records": 799749,
-    "test_records": 200251,
+    "total_silver_records": 911285,
+    "min_ratings_threshold": 30,
+    "experiment_sample_records": 911285,
+    "distinct_users": 6746,
+    "distinct_movies": 4448,
+    "train_records": 728892,
+    "test_records": 182393,
     "latent_rank": 20
   },
   "models": {
@@ -12,11 +15,11 @@
       "model_name": "Scikit-learn TruncatedSVD",
       "paradigm": "Single-node (Đơn máy)",
       "rank": 20,
-      "train_time_sec": 0.45,
-      "total_time_sec": 0.59,
-      "peak_ram_mb": 31.72,
-      "test_rmse": 2.7145,
-      "evaluated_test_records": 198617
+      "train_time_sec": 0.27,
+      "total_time_sec": 0.45,
+      "peak_ram_mb": 26.12,
+      "test_rmse": 2.6898,
+      "evaluated_test_records": 182393
     },
     "spark_als": {
       "model_name": "Apache Spark MLlib ALS",
@@ -24,8 +27,8 @@
       "rank": 20,
       "max_iter": 15,
       "reg_param": 0.1,
-      "train_time_sec": 11.05,
-      "test_rmse": 0.8204,
+      "train_time_sec": 34.48,
+      "test_rmse": 0.8091,
       "executor_memory_pool": "10 GB",
       "shuffle_partitions": 24
     }

@@ -221,6 +221,7 @@ def export_gold_recommendations(spark, als_model, movies_path, output_gold_path,
 def main():
     parser = argparse.ArgumentParser(description="Huấn luyện và Đối sánh Mô hình Hệ thống Gợi ý (Group 7)")
     parser.add_argument("--sample-size", type=int, default=1000000, help="Số bản ghi mẫu để thực nghiệm đối sánh (Mặc định: 1M)")
+    parser.add_argument("--min-ratings", type=int, default=None, help="Ngưỡng đánh giá tối thiểu của phim (Mặc định: 30 cho 1M, 150 cho 25M)")
     parser.add_argument("--rank", type=int, default=20, help="Số chiều đặc trưng tiềm ẩn (rank / n_components)")
     parser.add_argument("--max-iter", type=int, default=15, help="Số vòng lặp huấn luyện ALS")
     parser.add_argument("--reg-param", type=float, default=0.1, help="Hệ số điều chuẩn ALS")
@@ -275,8 +276,17 @@ def main():
         working_df = ratings_df
         run_svd = not args.skip_svd
 
+    # 2.1. Kiểm tra bộ lọc chất lượng (nếu người dùng chỉ định ngưỡng lọc thêm)
+    min_ratings = args.min_ratings if args.min_ratings is not None else (150 if args.full else 30)
+    if args.min_ratings is not None and args.min_ratings > 0:
+        print(f"\n[*] Áp dụng bộ lọc chất lượng bổ sung: Chỉ giữ lại các phim có >= {args.min_ratings} lượt đánh giá...")
+        movie_counts = working_df.groupBy("movieId").count().filter(F.col("count") >= args.min_ratings)
+        working_df = working_df.join(movie_counts.select("movieId"), on="movieId", how="inner")
+
     working_count = working_df.count()
-    print(f"[*] Kích thước tập dữ liệu thực nghiệm: {working_count:,} bản ghi")
+    distinct_movies = working_df.select("movieId").distinct().count()
+    distinct_users = working_df.select("userId").distinct().count()
+    print(f"[✓] Tập dữ liệu nạp vào huấn luyện: {working_count:,} bản ghi ({distinct_users:,} users x {distinct_movies:,} movies)")
 
     # 3. Chia tập Train (80%) và Test (20%) có cố định seed
     print("[*] Phân chia Train/Test: 80% Train, 20% Test (seed=42)...")
@@ -291,7 +301,10 @@ def main():
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "dataset_info": {
             "total_silver_records": total_records,
+            "min_ratings_threshold": min_ratings,
             "experiment_sample_records": working_count,
+            "distinct_users": distinct_users,
+            "distinct_movies": distinct_movies,
             "train_records": train_count,
             "test_records": test_count,
             "latent_rank": args.rank

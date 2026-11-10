@@ -152,7 +152,7 @@ Quy trình làm sạch dữ liệu đặt ra các yêu cầu kỹ thuật chi ti
   * *Kiểm tra miền giá trị:* $userId > 0$, $movieId > 0$, $0.5 \le rating \le 5.0$ (bước nhảy 0.5), $timestamp$ phải thuộc khoảng thời gian hợp lệ (từ năm 1995 đến nay).
   * *Xử lý giá trị thiếu (Missing Values):* Trong bài toán hệ thống gợi ý, **tuyệt đối không áp dụng phương pháp điền khuyết (Imputation bằng trung bình/trung vị)** cho các trường khóa và điểm đánh giá vì sẽ làm sai lệch bản chất tương tác thực tế. Áp dụng quy tắc loại bỏ triệt để (Drop) các bản ghi có $userId$, $movieId$ hoặc $rating$ bị Null.
   * *Xử lý trùng lặp (Deduplication):* Với trường hợp một người dùng đánh giá cùng một bộ phim nhiều lần tại các mốc thời gian khác nhau, sử dụng Window Function (`row_number() over (partition by userId, movieId order by timestamp desc)`) để chỉ giữ lại lượt đánh giá mới nhất.
-  * *Giảm độ thưa dữ liệu (Sparsity & Noise Filtering):* Lọc bỏ các bộ phim có ít hơn 5 lượt đánh giá trong toàn bộ tập dữ liệu nhằm loại bỏ nhiễu ngoại lai và giảm bớt bài toán Cold-Start.
+  * *Giảm độ thưa dữ liệu và Chọn lọc chất lượng (Sparsity & Quality Curation):* Ngay tại pipeline chuyển đổi Bronze sang Silver, hệ thống thiết lập bộ lọc ngưỡng đánh giá tối thiểu (Popularity Threshold: $\ge 30$ lượt đánh giá đối với mẫu thử nghiệm 1M và $\ge 150$ lượt đánh giá đối với toàn phần 25M). Kỹ thuật này loại bỏ triệt để hơn 16.000 bộ phim hiếm/nhiễu thưa (chỉ có 1–2 người chấm), giải quyết tận gốc hiện tượng Overfitting vector tiềm ẩn trong ALS và tinh gọn kích thước ma trận trước khi đưa vào lưu trữ Silver Parquet.
 * **Tệp `movies.csv`:**
   * *Khóa chính:* $movieId$ không được Null và không bị trùng lặp.
   * *Bóc tách năm phát hành (Feature Extraction):* Tên phim trong dữ liệu thường có định dạng `"Toy Story (1995)"`. Sử dụng PySpark Regex trích xuất năm sản xuất sang cột riêng `year` (kiểu Integer) và làm sạch cột `title`.
@@ -215,8 +215,9 @@ Dữ liệu đầu vào lấy trực tiếp từ tầng **Silver** (`ratings_cle
 ### **9.2. Chuẩn bị dữ liệu huấn luyện**
 
 * **Nguồn dữ liệu:** Dữ liệu đánh giá sạch sau tiền xử lý tại `data/silver/ratings_cleaned.parquet`.  
+* **Lọc bỏ nhiễu phim thưa ngay tại tầng Silver (Popularity Threshold Filtering):** Trong bài toán lọc cộng tác (Collaborative Filtering), các bộ phim có quá ít lượt đánh giá (chỉ 1–2 người chấm) sẽ gây hiện tượng Overfitting vector tiềm ẩn, dẫn tới việc mô hình ưu tiên gợi ý các bộ phim lạ hoắc với điểm số bị thổi phồng ($> 5.0$). Nhóm chủ động đưa bộ lọc chất lượng vào ngay **bước 2 (Bronze $\to$ Silver)**: chỉ giữ lại các phim có $\ge 30$ lượt đánh giá (đối với tập thực nghiệm 1M) và $\ge 150$ lượt đánh giá (đối với tập toàn phần 25M). Kỹ thuật Curated Data này giúp loại bỏ hơn 16.000 phim rác/phim thưa (chiếm gần 80% số đầu phim nhưng chỉ đóng góp dưới 9% lượt tương tác), giữ lại hơn 91% số lượt tương tác chất lượng cao, thu gọn kích thước ma trận, triệt tiêu Overfitting và tăng tốc toàn bộ quá trình huấn luyện downstream.
 * **Chia dữ liệu:** Phân chia ngẫu nhiên thành 80% tập huấn luyện (training set) và 20% tập kiểm thử (test set), sử dụng cùng một `seed = 42` cố định để bảo đảm tính khách quan và khả năng tái lập kết quả.  
-* **Quy mô dữ liệu:** Trên toàn bộ 25 triệu lượt đánh giá, khoảng 20 triệu lượt dùng để huấn luyện và 5 triệu lượt dùng để kiểm thử.  
+* **Quy mô dữ liệu & Tập mẫu tiến độ (1M Sample):** Trong giai đoạn báo cáo tiến độ, nhóm sử dụng tập mẫu 1.000.000 bản ghi đánh giá (sau khi lọc $\ge 30$ lượt đánh giá còn **911.285 bản ghi sạch trên 4.448 phim và 6.746 người dùng**). Dữ liệu được chia thành 80% Train (**728.892 bản ghi**) và 20% Test (**182.393 bản ghi**) nhằm tạo môi trường đối sánh công bằng 1-1 với mô hình đơn máy Scikit-learn TruncatedSVD (vốn không thể chạy trên toàn bộ 25M do quá tải RAM). Khi mở rộng lên toàn bộ 25M dòng ở giai đoạn bảo vệ cuối kỳ với ngưỡng $\ge 150$ lượt đánh giá, khoảng 20 triệu lượt dùng để huấn luyện và 5 triệu lượt dùng để kiểm thử.  
 * **Nguyên tắc:** Tập kiểm thử hoàn toàn độc lập, không được dùng để huấn luyện hoặc điều chỉnh siêu tham số.
 
 ### **9.3. Huấn luyện mô hình phân tán Apache Spark ALS**
@@ -286,7 +287,9 @@ Sử dụng Streamlit để xây dựng giao diện và Matplotlib để trực 
 
 * **Tổng quan dữ liệu (EDA):** Hiển thị số lượng người dùng, phim, lượt đánh giá và phân bố điểm đánh giá qua các năm.  
 * **Đối sánh mô hình:** Trình bày bảng chỉ số RMSE, thời gian huấn luyện, mức tiêu thụ RAM giữa Spark ALS và Scikit-learn SVD.  
-* **Tra cứu gợi ý phim:** Cho phép chọn người dùng có sẵn trong tập dữ liệu và hiển thị danh sách Top-10 phim được đề xuất từ tầng Gold.  
+* **Tra cứu và Đối chiếu Gợi ý Phim (Explainable Recommendation UI):** Thiết kế giao diện hiển thị 2 cột song song đối chiếu trực quan:
+  * *Cột trái - Lịch sử đã xem (User Profile):* Hiển thị danh sách 10 bộ phim mà người dùng này từng chấm $4.0 - 5.0\bigstar$ trong quá khứ kèm tổng số lượt đánh giá và Top 3 thể loại yêu thích (phản ánh gu xem phim thực tế).
+  * *Cột phải - Top 10 phim mô hình gợi ý:* Hiển thị 10 bộ phim chuẩn gu do Spark ALS đề xuất (đã loại trừ toàn bộ phim đã xem ở cột trái), chứng minh tính logic, cá nhân hóa sâu sắc và khả năng giải thích được (Explainability) của mô hình.  
 * **Demo Cá nhân hóa Người dùng mới (Interactive Cold-Start Onboarding):**
   * Cung cấp giao diện tương tác trực tiếp: Cho phép người dùng tick chọn các thể loại phim yêu thích và thể loại muốn loại trừ.
   * Hiển thị danh sách các phim nổi bật thuộc thể loại đã chọn để người dùng đánh giá nhanh (Đã xem & Thích / Không thích / Chưa xem).

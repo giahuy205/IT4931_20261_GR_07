@@ -74,7 +74,7 @@ def clean_and_transform_movies(spark, bronze_dir, silver_dir):
     return df_transformed
 
 
-def clean_and_transform_ratings(spark, bronze_dir, silver_dir, movies_df=None, sample_mode=False):
+def clean_and_transform_ratings(spark, bronze_dir, silver_dir, movies_df=None, sample_mode=False, min_ratings=None):
     print("\n" + "=" * 65)
     mode_text = "SAMPLE (1,000,000 DÒNG TEST NHANH)" if sample_mode else "FULL (25,000,000 DÒNG CHÍNH THỨC)"
     print(f"[*] BƯỚC 2: LÀM SẠCH VÀ PHÂN VÙNG RATINGS - CHẾ ĐỘ {mode_text}")
@@ -121,16 +121,19 @@ def clean_and_transform_ratings(spark, bronze_dir, silver_dir, movies_df=None, s
     if movies_df is not None:
         df_dedup = df_dedup.join(movies_df.select("movieId"), on="movieId", how="left_semi")
 
-    # 6. Lọc thưa dữ liệu (Sparsity filtering): Chỉ giữ các phim có >= 5 lượt đánh giá
-    if not sample_mode:
-        movie_counts = df_dedup.groupBy("movieId").agg(count("rating").alias("review_count"))
-        active_movies = movie_counts.filter(col("review_count") >= 5)
-        df_filtered = df_dedup.join(active_movies.select("movieId"), on="movieId", how="left_semi")
-    else:
-        df_filtered = df_dedup
+    # 6. Lọc thưa & Loại bỏ phim rác (Popularity & Sparsity Filtering)
+    # Ngưỡng chất lượng: >= 30 lượt đánh giá (chế độ mẫu 1M), >= 150 lượt đánh giá (chế độ toàn phần 25M)
+    threshold = min_ratings if min_ratings is not None else (30 if sample_mode else 150)
+    print(f"[*] Áp dụng bộ lọc chất lượng: Chỉ giữ các phim có >= {threshold} lượt đánh giá...")
+    movie_counts = df_dedup.groupBy("movieId").agg(count("rating").alias("review_count"))
+    active_movies = movie_counts.filter(col("review_count") >= threshold)
+    df_filtered = df_dedup.join(active_movies.select("movieId"), on="movieId", how="left_semi")
 
     total_clean = df_filtered.count()
-    print(f"[+] Số lượng ratings sau làm sạch & khử trùng: {total_clean:,} bản ghi")
+    distinct_movies = df_filtered.select("movieId").distinct().count()
+    distinct_users = df_filtered.select("userId").distinct().count()
+    print(f"[+] Số lượng ratings sau làm sạch & lọc chất lượng: {total_clean:,} bản ghi")
+    print(f"[+] Giữ lại: {distinct_users:,} users và {distinct_movies:,} bộ phim chất lượng cao.")
     print(f"[+] Đã loại bỏ: {total_raw - total_clean:,} bản ghi rác/trùng/nhiễu thưa.")
 
     # 7. Ghi ra Silver Parquet (Phân vùng theo rating_year và nén Snappy)
@@ -184,6 +187,12 @@ def main():
         action="store_true",
         help="Chạy ở chế độ mẫu (1M dòng ratings) để test nhanh",
     )
+    parser.add_argument(
+        "--min-ratings",
+        type=int,
+        default=None,
+        help="Ngưỡng đánh giá tối thiểu (Mặc định: 30 cho --sample, 150 cho full 25M)",
+    )
     args = parser.parse_args()
 
     spark = get_spark_session(app_name="Bronze_to_Silver_ETL")
@@ -200,7 +209,7 @@ def main():
     print("================================================================")
 
     movies_df = clean_and_transform_movies(spark, bronze_dir, silver_dir)
-    clean_and_transform_ratings(spark, bronze_dir, silver_dir, movies_df, sample_mode=args.sample)
+    clean_and_transform_ratings(spark, bronze_dir, silver_dir, movies_df, sample_mode=args.sample, min_ratings=args.min_ratings)
     clean_and_transform_tags(spark, bronze_dir, silver_dir)
 
     print("\n[SUCCESS] Pipeline Bronze -> Silver đã hoàn tất xuất sắc!")
