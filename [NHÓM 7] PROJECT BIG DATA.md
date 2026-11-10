@@ -123,11 +123,16 @@ Hệ thống được thiết kế theo mô hình xử lý kép (Hybrid Batch & 
    * Lưu mô hình phân tán đã huấn luyện vào `models/als_best_model/` phục vụ suy luận linh hoạt.
    * Xây dựng pipeline tự động sinh danh sách *Top-10 bộ phim gợi ý* có điểm dự đoán cao nhất cho từng `userId`, loại trừ các bộ phim người dùng đã từng xem/đánh giá trong lịch sử.  
    * Ghi nhận kết quả gợi ý hoàn chỉnh (kèm tiêu đề, thể loại phim) vào tầng **Gold Zone** (`data/gold/user_recommendations_top10.parquet`) nhằm tối ưu tốc độ phản hồi cho Dashboard.
-5. **Xử lý luồng thời gian thực (Real-time Stream Processing):**  
+5. **Xử lý bài toán Người dùng mới (Interactive Cold-Start & Onboarding Demo):**
+   * Giải quyết triệt để bài toán Cold-Start khi người dùng mới truy cập hệ thống chưa hề có lịch sử đánh giá trong tập dữ liệu.
+   * Cung cấp giao diện Onboarding tương tác: Người dùng chọn các thể loại phim yêu thích và thể loại muốn loại trừ.
+   * Hệ thống hiển thị 5–8 bộ phim tiêu biểu để người dùng đánh giá nhanh (Đã xem & Thích / Không thích / Chưa xem).
+   * Ứng dụng kỹ thuật **ALS Folding-in** (chiếu nhanh vector tương tác của người dùng mới lên không gian tiềm ẩn của các bộ phim đã huấn luyện) để lập tức sinh danh sách Top-10 phim chuẩn gu trong vòng vài mili-giây mà không cần kích hoạt lại toàn bộ cụm Spark.
+6. **Xử lý luồng thời gian thực (Real-time Stream Processing):**  
    * Mô phỏng luồng đánh giá phim liên tục và nạp vào Spark Structured Streaming.
    * Tính toán chỉ số thống kê tức thời: Danh sách phim thịnh hành (Trending Movies) và biến động điểm trung bình trong cửa sổ trượt.
-6. **Trực quan hóa và đánh giá hiệu năng (Visualization & Performance Evaluation):**  
-   * Xây dựng Dashboard Streamlit đa chức năng: Khám phá dữ liệu, tra cứu gợi ý theo `userId`, biểu đồ luồng thời gian thực.
+7. **Trực quan hóa và đánh giá hiệu năng (Visualization & Performance Evaluation):**  
+   * Xây dựng Dashboard Streamlit đa chức năng: Khám phá dữ liệu, tra cứu gợi ý theo `userId`, demo gợi ý tương tác cho người dùng mới, và biểu đồ luồng thời gian thực.
    * Thực nghiệm so sánh hiệu năng: Đánh giá dung lượng lưu trữ và thời gian truy vấn giữa CSV và Parquet; đo lường thời gian thực thi theo các cấu hình phân vùng (4, 8, 16 partitions).
 
 ## **8. Tiền xử lý, Quản lý Lưu trữ và Xử lý Luồng dữ liệu**
@@ -255,8 +260,14 @@ Nhóm thiết kế kịch bản thực nghiệm đối sánh trực diện trên
 ### **9.6. Lưu trữ Mô hình và Xuất dữ liệu Tầng Gold (Serving Layer)**
 
 * **Lưu trữ mô hình:** Mô hình Spark ALS tốt nhất được lưu tuần tự hóa vào thư mục `models/als_best_model/` để tái sử dụng trong suy luận trực tiếp.
-* **Tạo danh sách Top-10 gợi ý:** Sử dụng hàm `recommendForAllUsers(10)` của Spark MLlib để tính toán trước 10 bộ phim phù hợp nhất cho từng người dùng, tự động loại trừ các phim người dùng đã đánh giá.
+* **Tạo danh sách Top-10 gợi ý ngoại tuyến (Offline Batch Recommendations):** Sử dụng hàm `recommendForAllUsers(10)` của Spark MLlib để tính toán trước 10 bộ phim phù hợp nhất cho từng người dùng, tự động loại trừ các phim người dùng đã đánh giá.
 * **Liên kết dữ liệu và ghi tầng Gold:** Join kết quả với `movies_cleaned.parquet` để bổ sung tiêu đề và thể loại, sau đó ghi dưới định dạng Snappy Parquet tại `data/gold/user_recommendations_top10.parquet`. Khi đó Dashboard có thể tra cứu kết quả tức thì ($O(1)$) mà không cần tính toán lại.
+* **Giải pháp cho bài toán Cold-Start (Kỹ thuật ALS Folding-in cho Người dùng mới):**
+  * Đối với người dùng mới toanh chưa có mã định danh trong tập dữ liệu 25M, hệ thống không kích hoạt lại quy trình huấn luyện toàn phần trên cụm Spark (vì gây lãng phí tài nguyên tính toán lớn).
+  * Thay vào đó, hệ thống trích xuất ma trận đặc trưng các bộ phim (**Item Factors** $V \in \mathbb{R}^{M \times k}$) đã được huấn luyện sẵn từ mô hình ALS.
+  * Sau khi người dùng mới chấm điểm nhanh $m$ bộ phim ($m \ll M$) trong bước Onboarding, vector sở thích của người dùng mới $u_{new} \in \mathbb{R}^k$ được giải nghiệm tối ưu trực tiếp bằng bài toán bình phương tối thiểu có điều chuẩn (Ridge Regression):
+    $$u_{new} = \left(V_{sub}^T V_{sub} + \lambda I\right)^{-1} V_{sub}^T r_{new}$$
+  * Phép tính này chỉ mất dưới $0.01$ giây trên CPU thông thường và lập tức tính được điểm dự đoán $\hat{r} = u_{new} \cdot V^T$, sinh ra danh sách Top-10 phim được cá nhân hóa hoàn toàn theo gu thưởng thức của người dùng mới.
 
 ### **9.7. Đánh giá chất lượng mô hình**
 
@@ -273,10 +284,15 @@ Sử dụng Streamlit để xây dựng giao diện và Matplotlib để trực 
 
 ### **10.2. Các chức năng chính**
 
-* Tổng quan dữ liệu: Hiển thị số lượng người dùng, phim, lượt đánh giá và phân bố điểm đánh giá.  
-* Hiển thị kết quả mô hình: Trình bày các chỉ số RMSE, Precision@10, Recall@10 và thời gian huấn luyện.  
-* Gợi ý phim: Cho phép chọn người dùng và hiển thị danh sách Top-10 phim được đề xuất.  
-* So sánh hiệu năng: Biểu diễn thời gian xử lý giữa các cấu hình phân vùng dữ liệu và định dạng CSV, Parquet.
+* **Tổng quan dữ liệu (EDA):** Hiển thị số lượng người dùng, phim, lượt đánh giá và phân bố điểm đánh giá qua các năm.  
+* **Đối sánh mô hình:** Trình bày bảng chỉ số RMSE, thời gian huấn luyện, mức tiêu thụ RAM giữa Spark ALS và Scikit-learn SVD.  
+* **Tra cứu gợi ý phim:** Cho phép chọn người dùng có sẵn trong tập dữ liệu và hiển thị danh sách Top-10 phim được đề xuất từ tầng Gold.  
+* **Demo Cá nhân hóa Người dùng mới (Interactive Cold-Start Onboarding):**
+  * Cung cấp giao diện tương tác trực tiếp: Cho phép người dùng tick chọn các thể loại phim yêu thích và thể loại muốn loại trừ.
+  * Hiển thị danh sách các phim nổi bật thuộc thể loại đã chọn để người dùng đánh giá nhanh (Đã xem & Thích / Không thích / Chưa xem).
+  * Tính toán tức thì vector sở thích bằng thuật toán Folding-in và xuất danh sách Top-10 phim đề xuất trực quan.
+* **So sánh hiệu năng Big Data:** Biểu diễn thời gian xử lý giữa các cấu hình phân vùng dữ liệu và định dạng CSV vs Parquet.
+* **Giám sát luồng thời gian thực:** Trực quan hóa danh sách phim thịnh hành (Trending Movies) từ Spark Structured Streaming.
 
 ### **10.3. Kết quả đầu ra**
 
@@ -290,8 +306,8 @@ Dashboard cho phép theo dõi dữ liệu, đánh giá chất lượng mô hình
 | 2 | Thu thập dữ liệu MovieLens 25M, cài đặt môi trường và thử nghiệm PySpark. | Có dữ liệu và môi trường xử lý hoạt động. |
 | 3–4 | Nạp, kiểm tra, làm sạch, chuẩn hóa dữ liệu; phân tích dữ liệu bằng Spark SQL và lưu trữ dưới dạng Parquet. | Hoàn thành quy trình tiền xử lý và có dữ liệu phục vụ huấn luyện. |
 | 5–6 | Xây dựng, huấn luyện mô hình ALS phân tán và đối sánh với mô hình cơ sở Scikit-learn TruncatedSVD; đánh giá bằng RMSE, thời gian và bộ nhớ. | Có mô hình tối ưu, bảng đối sánh hiệu năng hệ phân tán và kết quả chất lượng. |
-| 7 | Xây dựng chức năng gợi ý Top-10 phim cho người dùng, loại bỏ các phim đã được đánh giá. | Hoàn thành chức năng gợi ý phim cá nhân hóa. |
+| 7 | Xây dựng chức năng gợi ý Top-10 phim cho người dùng và module giải quyết Cold-Start tương tác (Onboarding & ALS Folding-in). | Hoàn thành chức năng gợi ý cá nhân hóa và thuật toán suy luận nhanh cho người dùng mới. |
 | 8 | Thử nghiệm hiệu năng Spark; so sánh CSV với Parquet và các cấu hình phân vùng dữ liệu. | Có số liệu và biểu đồ so sánh hiệu năng. |
-| 9 | Xây dựng dashboard bằng Streamlit, tích hợp các chức năng và kiểm thử hệ thống. | Hoàn thành hệ thống thử nghiệm có giao diện trực quan. |
+| 9 | Xây dựng dashboard hoàn chỉnh bằng Streamlit (EDA, Benchmark, Đối sánh ALS vs SVD, Demo tương tác Cold-Start, Streaming) và kiểm thử hệ thống. | Hoàn thành ứng dụng trực quan đa chức năng phục vụ thuyết trình. |
 | 10 | Tổng hợp kết quả thực nghiệm, hoàn thiện báo cáo, mã nguồn và slide thuyết trình. | Hoàn thành project và chuẩn bị thuyết trình. |
 
